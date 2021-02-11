@@ -88,11 +88,11 @@ static void winsock_close(void) {
 
 /*---------------------------------------------------------------------------*/
 #define MAX_INTERFACES 256
-#define DEFAULT_INTERFACE 1
+#define DEFAULT_INTERFACE 2
 #if !defined(WIN32)
 #define INVALID_SOCKET (-1)
 #endif
-static in_addr_t get_localhost(char **name)
+static in_addr_t get_localhost(char **name, char *preferred_interface)
 {
 #ifdef WIN32
 	char buf[256];
@@ -153,7 +153,7 @@ static in_addr_t get_localhost(char **name)
 	struct sockaddr_in LocalAddr;
 	int j = 0;
 
-	if (name) {
+	if (name && *name == NULL) {
 		*name = malloc(256);
 		gethostname(*name, 256);
 	}
@@ -183,8 +183,8 @@ static in_addr_t get_localhost(char **name)
 		i += sizeof *pifReq;
 		/* See if this is the sort of interface we want to deal with. */
 		memset(ifReq.ifr_name, 0, sizeof(ifReq.ifr_name));
-		strncpy(ifReq.ifr_name, pifReq->ifr_name,
-			sizeof(ifReq.ifr_name) - 1);
+		strncpy(ifReq.ifr_name, pifReq->ifr_name, sizeof(ifReq.ifr_name) - 1);
+
 		/* Skip loopback, point-to-point and down interfaces,
 		 * except don't skip down interfaces
 		 * if we're trying to get a list of configurable interfaces. */
@@ -193,6 +193,7 @@ static in_addr_t get_localhost(char **name)
 			(!(ifReq.ifr_flags & IFF_UP))) {
 			continue;
 		}
+
 		if (pifReq->ifr_addr.sa_family == AF_INET) {
 			/* Get a pointer to the address...*/
 			memcpy(&LocalAddr, &pifReq->ifr_addr,
@@ -202,12 +203,23 @@ static in_addr_t get_localhost(char **name)
 				htonl(INADDR_LOOPBACK)) {
 				continue;
 			}
+
+            // Found interface matches preferred
+            if (preferred_interface && strncmp(ifReq.ifr_name, preferred_interface, strlen(ifReq.ifr_name)) == 0) {
+                break;
+            }
+
 		}
 		/* increment j if we found an address which is not loopback
 		 * and is up */
 		j++;
 	}
 	close(LocalSock);
+
+    if (preferred_interface && strncmp(ifReq.ifr_name, preferred_interface, strlen(ifReq.ifr_name)) != 0) {
+        // Chosen interface does not match preferred
+        printf("No active interface matches desired %s. Choosing %s.\n", preferred_interface, ifReq.ifr_name);
+    }
 
 	return LocalAddr.sin_addr.s_addr;
 #endif
@@ -257,7 +269,9 @@ int main(int argc, char *argv[]) {
 	const char **txt;
 	struct in_addr host;
 	char *hostname = NULL;
+    char *preferred_interface = NULL;
 	int opt = 0;
+    host.s_addr = INADDR_ANY;
 
 	signal(SIGINT, sighandler);
 	signal(SIGTERM, sighandler);
@@ -277,8 +291,6 @@ int main(int argc, char *argv[]) {
     // Check for optional args
     int argi = 1;
 
-    host.s_addr = get_localhost(&hostname);
-
     while (argi < argc) {
         if (!strcasecmp(argv[argi], "host")) {
             host.s_addr = inet_addr(argv[argi + 1]);
@@ -286,10 +298,21 @@ int main(int argc, char *argv[]) {
         }
 
         if (!strcasecmp(argv[argi], "hostname")) {
+            hostname = malloc(256);
             strncpy(hostname, argv[argi + 1], strlen(argv[argi + 1]));
             opt += 2;
         }
+
+        if (!strcasecmp(argv[argi], "interface")) {
+            preferred_interface = argv[argi + 1];
+            opt += 2;
+        }
+
         argi++;
+    }
+
+    if (host.s_addr == INADDR_ANY || hostname == NULL) {
+        host.s_addr = get_localhost(&hostname, preferred_interface);
     }
 
 	hostname = realloc(hostname, strlen(hostname) + strlen(".local") + 1);
