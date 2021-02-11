@@ -124,7 +124,7 @@ static int create_recv_sock(uint32_t host) {
 		return r;
 	}
 
-#if !defined(WIN32)
+#if !defined(WIN32) && defined(SO_REUSEPORT)
   on = sizeof(on);
   if (!getsockopt(sd, SOL_SOCKET, SO_REUSEPORT,(char*) &on, (void*) &on)) {
     on = 1;
