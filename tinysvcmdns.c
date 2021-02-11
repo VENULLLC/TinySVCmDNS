@@ -214,9 +214,11 @@ static in_addr_t get_localhost(char **name)
 }
 
 
-/*---------------------------------------------------------------------------*/
-static int print_usage(void) {
-	printf("[host <ip>] <identity> <type> <port> <txt> [txt] ... [txt]\n");
+
+/*---------------------------------------------------------------------------*/
+
+static int print_usage(void) {
+	printf("[host <ip>] [hostname <hostname>] <identity> <type> <port> <txt> [txt] ... [txt]\n");
 #ifdef WIN32
 	winsock_close();
 #endif
@@ -224,8 +226,10 @@ static in_addr_t get_localhost(char **name)
 }
 
 
-/*---------------------------------------------------------------------------*/
-static void sighandler(int signum) {
+
+/*---------------------------------------------------------------------------*/
+
+static void sighandler(int signum) {
 	mdnsd_stop(svr);
 #ifdef WIN32
 	winsock_close();
@@ -234,19 +238,25 @@ static in_addr_t get_localhost(char **name)
 }
 
 
-/*---------------------------------------------------------------------------*/
-/*																			 */
-/*---------------------------------------------------------------------------*/
-#ifdef MDNS_SVC
-int mdns_server(int argc, char *argv[]) {
-#else
+
+/*---------------------------------------------------------------------------*/
+
+/*																			 */
+
+/*---------------------------------------------------------------------------*/
+
+#ifdef MDNS_SVC
+
+int mdns_server(int argc, char *argv[]) {
+
+#else
 int main(int argc, char *argv[]) {
 #endif
 	char type[255];
 	int port;
 	const char **txt;
 	struct in_addr host;
-	char *hostname;
+	char *hostname = NULL;
 	int opt = 0;
 
 	signal(SIGINT, sighandler);
@@ -264,21 +274,32 @@ int main(int argc, char *argv[]) {
 #ifdef WIN32
 	winsock_init();
 #endif
+    // Check for optional args
+    int argi = 1;
 
-	host.s_addr = get_localhost(&hostname);
+    host.s_addr = get_localhost(&hostname);
+
+    while (argi < argc) {
+        if (!strcasecmp(argv[argi], "host")) {
+            host.s_addr = inet_addr(argv[argi + 1]);
+            opt += 2;
+        }
+
+        if (!strcasecmp(argv[argi], "hostname")) {
+            strncpy(hostname, argv[argi + 1], strlen(argv[argi + 1]));
+            opt += 2;
+        }
+        argi++;
+    }
+
 	hostname = realloc(hostname, strlen(hostname) + strlen(".local") + 1);
 	strcat(hostname, ".local");
 
-	if (!strcasecmp(argv[1], "host")) {
-		host.s_addr = inet_addr(argv[2]);
-		opt = 2;
-	}
-
 	if (host.s_addr == INADDR_ANY) {
 		printf("cannot find host address\n");
-		free(hostname);
-		return print_usage();
-	}
+		free(hostname);
+		return print_usage();
+	}
 
 	if (argc < 5+opt) return print_usage();
 
@@ -320,4 +341,4 @@ int main(int argc, char *argv[]) {
 
 	return 0;
 }
-
+
